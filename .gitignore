@@ -7,3 +7,9 @@ dataset/
 *.pth
 *.pt
 *.tar
+
+# -- record ignore --
+record/
+**record/
+runs/
+**runs/

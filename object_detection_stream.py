@@ -4,10 +4,10 @@ import cv2, time, datetime, os
 from pathlib import Path
 
 # ========= 사용자 설정 =========
-ENGINE_PATH     = "/home/ircv7/Embedded/HYU-ECL3003/week07/n_detection.engine"
+ENGINE_PATH     = "/home/ircv7/Embedded/Project_1/tensorrt_engine/n_detection.engine"
 SAVE_DIR        = Path("runs")               # 이미지·동영상 저장 폴더
-SAVE_EVERY_N    = 30                        # N프레임마다 1장씩 이미지 저장
-VIDEO_FPS       = 30                         # mp4 저장 FPS
+SAVE_EVERY_N    = 10                        # N프레임마다 1장씩 이미지 저장
+VIDEO_FPS       = 10                         # mp4 저장 FPS
 # =================================
 
 def gstreamer_pipeline(sensor_id=1, width=1920, height=1080,
@@ -55,24 +55,25 @@ def main():
             if not ok:
                 print("⚠️  프레임 수신 실패 – 종료")
                 break
-
-            # --- YOLO 추론 ---
-            result = model(frame, imgsz=640)[0]
-            for box, conf, cls in zip(result.boxes.xyxy,
-                                      result.boxes.conf,
-                                      result.boxes.cls):
-                x1, y1, x2, y2 = map(int, box)
-                cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
-                label = f"{model.names[int(cls)]} {conf:.2f}"
-                cv2.putText(frame, label, (x1, y1-8),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
-
-            # --- 저장 ---
-            vw.write(frame)                                      # mp4에 프레임 추가
             if frame_idx % SAVE_EVERY_N == 0:                    # N프레임마다 이미지 저장
                 ts = datetime.datetime.now().strftime("%H%M%S_%f")
                 cv2.imwrite(str(img_dir / f"{ts}.jpg"), frame)
+                # --- YOLO 추론 ---
+                result = model(frame, imgsz=640)[0]
+                result_plot = result.plot()
+            # for box, conf, cls in zip(result.boxes.xyxy,
+            #                           result.boxes.conf,
+            #                           result.boxes.cls):
+            #     x1, y1, x2, y2 = map(int, box)
+            #     cv2.rectangle(frame, (x1, y1), (x2, y2), (0,255,0), 2)
+            #     label = f"{model.names[int(cls)]} {conf:.2f}"
+            #     cv2.putText(frame, label, (x1, y1-8),
+            #                 cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0,255,0), 2)
             frame_idx += 1
+            # --- 저장 ---
+            # vw.write(frame)
+            vw.write(result_plot)                   # mp4에 프레임 추가
+
 
     except KeyboardInterrupt:
         print("\n⏹️  사용자 중단")

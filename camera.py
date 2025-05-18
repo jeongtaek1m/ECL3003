@@ -18,7 +18,7 @@ logging.getLogger().setLevel(logging.INFO)
 class Camera:
     def __init__(
         self,
-        sensor_id: int | Sequence[int] = 0,
+        sensor_id: int | Sequence[int] = 1,
         width: int = 1920,
         height: int = 1080,
         _width: int = 960,
