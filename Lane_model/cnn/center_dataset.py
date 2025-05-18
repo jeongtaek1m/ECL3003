@@ -28,7 +28,7 @@ class CenterDataset(torch.utils.data.Dataset):
         self.transform = transform
         self.train = train
                 
-        with open(os.path.join(root_dir, 'annotation.txt'), 'r') as f:
+        with open(os.path.join(root_dir, 'annotation1.txt'), 'r') as f:
             self.data = [line.split() for line in f.readlines()][:-1]
             # self.data = [(image_filename: (xpos, ypos) for image_filename, xpos, ypos in f.readlines()}
                         
