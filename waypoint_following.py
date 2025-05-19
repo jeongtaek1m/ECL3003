@@ -7,7 +7,7 @@ Jetson-based 4WD 로버 — 모노 카메라 웨이포인트 추종 스크�
 """
 
 # ── 기본 라이브러리 ───────────────────────────────────────────
-import time, math, threading
+import time, math, threading, json
 from collections import deque
 
 import cv2
@@ -15,8 +15,9 @@ from PIL import Image
 import numpy as np
 import torch
 import torchvision
-import matplotlib.pyplot as plt          # (시각화 주석 처리 가능)
-import matplotlib.animation as animation  # (시각화 주석 처리 가능)
+# import matplotlib.pyplot as plt          # (시각화 주석 처리 가능)
+# import matplotlib.animation as animation  # (시각화 주석 처리 가능)
+import zmq
 
 # ── Jetson / 프로젝트 라이브러리 ──────────────────────────────
 from jetcam.csi_camera import CSICamera
@@ -28,15 +29,25 @@ Kp, Ki, Kd       = 0.9, 0.05, 0.2               # PID gains
 UPDATE_INTERVAL  = 0.10                        # [s]
 BASE_SPEED       = 100                         # 기본 속도 [%]
 MAX_STEER_RATIO  = 0.9                         # |steer|=1 일 때 감속비
+OD_DEPTH_THRESH  = 1.0                         # OD로부터 받은 depth 기준
 
 # ── PID 상태 변수 ────────────────────────────────────────────
 _prev_error = 0.0
 _integral   = 0.0
 
+Task1_Flag = 1
+Red_Flag = 1
+
+Task2_Flag = 0
+Task3_Flag = 0
+Task4_Flag = 0
+
 Traffic_Red = 0
 Traffic_Green = 0
+
 Slow_Sign = 0
 Stop_Sign = 0
+
 Left_Sign = 0
 Right_Sign = 0
 Straight_Sign = 0
@@ -55,6 +66,21 @@ camera.running = True                              # JetCam 특성
 # camera.cap.release()  
 # ── BaseController 초기화 ───────────────────────────────────
 base = BaseController('/dev/ttyUSB0', 115200)
+
+# ── ZMQ SUB 초기화 ───────────────────────────────────────────
+ctx = zmq.Context()
+sub = ctx.socket(zmq.SUB)
+sub.connect("tcp://localhost:5555")  # OD 쪽 PUB 주소
+sub.setsockopt_string(zmq.SUBSCRIBE, "")
+latest_detection = None
+
+def zmq_listener():
+    global latest_detection
+    while True:
+        msg = sub.recv_string()
+        latest_detection = json.loads(msg)
+
+threading.Thread(target=zmq_listener, daemon=True).start()
 
 # ── 프레임 획득 함수 ─────────────────────────────────────────
 def get_frame():
@@ -124,7 +150,21 @@ def infer_waypoint():
         raise KeyboardInterrupt
     return x, y, width
 
+def infer_object():
+    image_pil, image_bgr, width, height = get_frame()
+    with torch.no_grad():
+        result = model(image_pil)
+        box_area = abs((result.boxes.xyxy[3] - result.boxes.xyxy[1]) * (result.boxes.xyxy[2] - result.boxes.xyxy[0]))
+        box_conf = result.boxes.conf
+        box_cls = result.boxes.cls
+        # print(result.boxes.xyxy)
+        # print(result.boxes.conf)
+        # print(result.boxes.cls)
+    return box_area, box_conf, box_cls
+
 # ── 메인 제어 루프 ───────────────────────────────────────────
+global time_gap
+time_gap = 0
 def run_pid_loop():
     try:
         while True:
@@ -133,31 +173,74 @@ def run_pid_loop():
             lateral_error = (x - center_x) / center_x    # [-1,1]
             steer = pid_control(lateral_error)
 
-            # Task1: 신호등 인식
-            if (Traffic_Red == 1):
-                L, R = compute_motor_output(0.0, 0.0)
-                send_control(L, R)
-                print(f"[SIGNAL] RED LIGHT DETECTED! STOP!")
-            elif (Traffic_Green == 1):
-                L, R = compute_motor_output(steer, BASE_SPEED)
-                send_control(L, R)
-                print(f"[SIGNAL] GREEN LIGHT DETECTED! GO!")
-            
-            # Task2: 정지 Or 감속 사인 인식
-            if (Slow_Sign == 1):
-                L, R = compute_motor_output(steer, BASE_SPEED * 0.5)
-                send_control(L, R)
-                print(f"[SIGNAL] SLOW SIGN DETECTED! SLOW DOWN!")
-            elif (Stop_Sign == 1):
-                L, R = compute_motor_output(0.0, 0.0)
-                send_control(L, R)
-                print(f"[SIGNAL] STOP SIGN DETECTED! STOP!")
-            
-            # Task3: 회피주행
 
-            # Task4: 직좌우 표지판 및 신호등 인식
-            # if (Traffic_Red == 1):
-            #     if 
+            # 2) OD→Depth 정보 처리
+            if latest_detection is not None:
+                d   = latest_detection["depth"]
+                cls = latest_detection["class"]
+                # 예시: 너무 가까우면 정지
+                if d < OD_DEPTH_THRESH:
+                    print(f"[OD] class={cls} too close (depth={d:.2f}), STOP")
+                    send_control(0, 0)
+                    time.sleep(1.0)
+                # 사용 후 초기화
+                latest_detection = None
+
+
+            if (Task1_Flag):
+                # Task1: 신호등 인식
+                if (Traffic_Red == 1):
+                    L, R = compute_motor_output(0.0, 0.0)
+                    send_control(L, R)
+                    print(f"[SIGNAL] RED LIGHT DETECTED! STOP!")
+                    Red_Flag = 1
+
+                else:
+                    L, R = compute_motor_output(steer, BASE_SPEED)
+                    send_control(L, R)
+                    print(f"[SIGNAL] GREEN LIGHT DETECTED! GO!")
+                    if (Red_Flag == 1):
+                       Task1_Flag = 0
+                       Task2_Flag = 1
+
+            elif (Task2_Flag):
+                # Task2: 정지 Or 감속 사인 인식
+                if (Slow_Sign == 1):
+                    L, R = compute_motor_output(steer, BASE_SPEED * 0.3)
+                    send_control(L, R)
+                    print(f"[SIGNAL] SLOW SIGN DETECTED! SLOW DOWN!")
+                    time.sleep(2)
+                    Slow_Flag = 1
+                
+                elif (Slow_Sign == 0 and Slow_Flag == 1):
+                    Task2_Flag = 0
+                    Task3_Flag = 1
+
+                elif (Stop_Sign == 1):
+                    L, R = compute_motor_output(0.0, 0.0)
+                    send_control(L, R)
+                    print(f"[SIGNAL] STOP SIGN DETECTED! STOP!")
+                    time.sleep(5)
+                    Task2_Flag = 0
+                    Task3_Flag = 1
+                
+            elif (Task3_Flag):
+                # Task3: 회피주행
+                print(f"Task3 detected")
+                
+                Task3_Flag = 0
+                Task4_Flag = 1
+
+            elif (Task4_Flag):
+                # Task4: 직좌우 표지판 및 신호등 인식
+                if (Traffic_Red):
+                    L, R = compute_motor_output(0.0, 0.0)
+                    send_control(L, R)
+                    print(f"[SIGNAL] RED LIGHT DETECTED! STOP!")
+                else:
+                    if (Left_Sign):
+                        pass ### this is where code is doing
+
 
             L, R  = compute_motor_output(steer, BASE_SPEED)
             send_control(L, R)
