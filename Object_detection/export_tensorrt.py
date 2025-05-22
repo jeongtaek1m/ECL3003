@@ -1,7 +1,7 @@
 from ultralytics import YOLO
 
 # Load the YOLO11 model
-model = YOLO("250519_n_detection.pt")
+model = YOLO("250521_n_detection.pt")
 
 # Export the model to TensorRT format
 model.export(format="engine")  # creates 'yolo11n.engine'

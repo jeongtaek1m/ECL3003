@@ -100,7 +100,7 @@ class Camera:
         """
         if self.video:
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')  # 코덱 지정
-            out = cv2.VideoWriter(str(self.save_path / 'test1.mp4'),
+            out = cv2.VideoWriter(str(self.save_path / 'full2_light_test1.mp4'),
                         fourcc,
                         self.frame_rate,
                         (self._width, self._height))

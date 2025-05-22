@@ -74,7 +74,7 @@ def get_frame():
 # ── Torch 모델 로드 및 전처리 ────────────────────────────────
 device = torch.device('cuda')
 model = torchvision.models.alexnet(num_classes=2, dropout=0.0)
-model.load_state_dict(torch.load('./Lane_model/lane_best.pt',
+model.load_state_dict(torch.load('./Lane_model/lane_best_521.pt',
                                  weights_only=True))
 model = model.to(device).eval()
 
@@ -95,11 +95,11 @@ def pid_control(error: float) -> float:
 def compute_motor_output(steer: float, base_speed: float):
     """steer(+우, -좌) → L,R 속도"""
     turn_scale = MAX_STEER_RATIO * abs(steer)
-    if steer < -0.15:          # 우회전 → 왼쪽 감속
+    if steer < -0.10:          # 우회전 → 왼쪽 감속
         L = base_speed * (1.0 - turn_scale)
-        R = base_speed * 2.2
-    elif steer > 0.15:        # 좌회전 → 오른쪽 감속
-        L = base_speed * 2.2
+        R = base_speed * 2.5
+    elif steer > 0.10:        # 좌회전 → 오른쪽 감속
+        L = base_speed * 2.5
         R = base_speed * (1.0 - turn_scale)
     else:
         L = R = base_speed
@@ -116,10 +116,10 @@ def infer_waypoint():
         output = model(preprocess(image_pil)).detach().cpu().numpy()[0]  # (x,y)
         x = (output[0] / 2 + 0.5) * width
         y = (output[1] / 2 + 0.5) * height
-    # 시각화 (ESC 종료)
-    # cv2.circle(image_bgr, (int(x), int(y)), 5, (0,0,255), -1)
-    # image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
-    # cv2.imshow("Lane Prediction", image_rgb)
+    #시각화 (ESC 종료)
+    cv2.circle(image_bgr, (int(x), int(y)), 5, (0,0,255), -1)
+    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    cv2.imshow("Lane Prediction", image_rgb)
     if cv2.waitKey(1) == 27:
         raise KeyboardInterrupt
     return x, y, width

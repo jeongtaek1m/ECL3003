@@ -6,11 +6,11 @@ base = BaseController('/dev/ttyUSB0', 115200)
 
 def send_control(L: float, R: float):
     """BaseController 인터페이스 (로버는 -값이 전진)"""
-    base.base_json_ctrl({"T": 11, "L": L, "R": R})
+    base.base_json_ctrl({"T": 1, "L": L, "R": R})
 
 
 while (True):
-    send_control(100.0,100.0)
+    send_control(0.2,-0.2)
     time.sleep(5)
-    send_control(200,200)
+    send_control(-0.2,0.2)
     time.sleep(5)
