@@ -257,12 +257,12 @@ def run_pid_loop():
     global time_gap_Flag
     global slow_counter, stop_counter
 
-    TASK_SPEED = BASE_SPEED
+    TASK_SPEED = 50
 
     try:
         while True:
             x, y, width = infer_waypoint()
-            center_x = width / 2 - 50 # 바꿈
+            center_x = width / 2 - 50
             lateral_error = (x - center_x) / center_x    # [-1,1]
             steer = pid_control(lateral_error)
             # TASK_SPEED = 100
@@ -314,24 +314,25 @@ def run_pid_loop():
             if (Task1_Flag):  
                 # Task1: 신호등 인식
                 print(f"Task1 Start!!")
-                if (depths[RED] > 2):
+                if (depths[RED] is not None and depths[RED] > 2):
 
                     TASK_SPEED = 0
                     print(f"[SIGNAL] RED LIGHT DETECTED! STOP!")
+                    Task1_Red_Flag = 1
                    
-                elif (depths[GREEN] > 0 ):
+                elif (depths[GREEN] > 0 and Task1_Red_Flag == 1):
                     TASK_SPEED = BASE_SPEED
                     print(f"[SIGNAL] GREEN LIGHT DETECTED! GO!")
-                    # if (Task1_Red_Flag == 1):
-                    #    Task1_Flag = 0
-                    #    Task3_Flag = 1
-                    #    Task1_Red_Flag = 0
+                    if (Task1_Red_Flag == 1):
+                       Task1_Flag = 0
+                       Task2_Flag = 1
+                       Task1_Red_Flag = 0
             
 
             # comment : 그냥 depth trigger 걸렸을 때 시간 재고 해당 몇초 지나면 slow 랑 stop 알아서 풀리게끔
-            # elif (Task2_Flag):
-            #     # Task2: 정지 Or 감속 사인 인식
-            #     print(f"Task2 Start!!")
+            elif (Task2_Flag):
+                # Task2: 정지 Or 감속 사인 인식
+                print(f"Task2 Start!!")
                 if (depths[SLOW] > 1):
                     TASK_SPEED = 50
                     print(f"[SIGNAL] SLOW SIGN DETECTED! SLOW DOWN!")
@@ -342,7 +343,7 @@ def run_pid_loop():
 
                     # 2초(=20프레임) 연속 검출되면 다음 태스크로
                     if slow_counter >= SLOW_CNT_THRESH:
-                        Task1_Flag = 0
+                        Task2_Flag = 0
                         Task3_Flag = 1
                         TASK_SPEED = BASE_SPEED
                         slow_counter = 0
@@ -374,7 +375,7 @@ def run_pid_loop():
 
                     # 3초(=30프레임) 연속 검출되면 다음 태스크로
                     if stop_counter >= STOP_CNT_THRESH:
-                        Task1_Flag = 0
+                        Task2_Flag = 0
                         Task3_Flag = 1
                         TASK_SPEED = BASE_SPEED
                         stop_counter = 0
@@ -393,7 +394,7 @@ def run_pid_loop():
                     stop_counter += 1
                     
                     if slow_counter >= SLOW_CNT_THRESH or stop_counter >= STOP_CNT_THRESH:
-                        Task1_Flag = 0
+                        Task2_Flag = 0
                         Task3_Flag = 1
                         TASK_SPEED = BASE_SPEED
                         slow_counter = 0
@@ -404,7 +405,7 @@ def run_pid_loop():
                 # comment : 사다리꼴
                 print(f"Task3 Start!!")
                 if (depths[VEHICLE] is not None and depths[VEHICLE] > 6):
-                    if (vehicle_center is not None and vehicle_center < width/2 - 50):  # 오른쪽으로 회피
+                    if (vehicle_center is not None and vehicle_center < center_x):  # 오른쪽으로 회피
                         send_control(MAX_AVOID_SPEED,MIN_AVOID_SPEED) # 오른쪽으로 2초 이동
                         time.sleep(AVOID_TIME)
                         send_control(150,150)
@@ -422,7 +423,7 @@ def run_pid_loop():
                         # send_control(MAX_AVOID_SPEED,MIN_AVOID_SPEED) # 오른쪽으로 2초 이동
                         # time.sleep(1.5)
                         
-                    elif (vehicle_center is not None and vehicle_center > width/2 - 50):  # 왼쪽으로 회피
+                    elif (vehicle_center is not None and vehicle_center > center_x):  # 왼쪽으로 회피
                         send_control(MIN_AVOID_SPEED,MAX_AVOID_SPEED) # 왼쪽으로 2초 이동
                         time.sleep(AVOID_TIME)
                         send_control(150,150)
@@ -448,19 +449,19 @@ def run_pid_loop():
                 print(f"Task4 Start!!")
                 #TASK_SPEED = 70
 
-                if depths[RED] > depths[LEFT] + depths[RIGHT] + depths[STRAIGHT] - 1 and depths[RED] != 0:
+                if depths[RED] > depths[LEFT] + depths[RIGHT] + depths[STRAIGHT]:
                     TASK_SPEED = 0
                     print(f"[SIGNAL] RED LIGHT DETECTED! STOP!")
-                elif depths[GREEN] >= depths[LEFT] + depths[RIGHT] + depths[STRAIGHT] - 1.0 and depths[GREEN] != 0:
+                elif depths[GREEN] > depths[LEFT] + depths[RIGHT] + depths[STRAIGHT]:
                     TASK_SPEED = BASE_SPEED
                 
-                if depths[LEFT] > 5 and TASK_SPEED != 0:
+                if depths[LEFT] > 4 and TASK_SPEED != 0:
                     send_control(-10,200)
-                    time.sleep(2.5)
-                elif depths[RIGHT] > 5 and TASK_SPEED != 0:
+                    time.sleep(3)
+                elif depths[RIGHT] > 4 and TASK_SPEED != 0:
                     send_control(200,-10)
-                    time.sleep(2.5)
-                elif depths[STRAIGHT] > 5 and TASK_SPEED != 0:
+                    time.sleep(3)
+                elif depths[STRAIGHT] > 4 and TASK_SPEED != 0:
                     TASK_SPEED = BASE_SPEED
                 
                 # if depths[RED] > depths[LEFT] + depths[RIGHT] + depths[STRAIGHT] and depths[RED] > 0: # 빨간불인 경우 정지

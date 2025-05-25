@@ -11,24 +11,29 @@ import json
 # ========= 사용자 설정 =========
 ENGINE_PATH     = "/home/ircv7/Embedded/Project_1/tensorrt_engine/250521_n_detection.engine"
 SAVE_DIR        = Path("runs")               # 이미지·동영상 저장 폴더
-SAVE_VIDEO      = True                       # 영상 저장 활성화
+SAVE_VIDEO      = False                       # 영상 저장 활성화
 VIDEO_NAME      = "yolo_depth_output.mp4"    # 저장될 비디오 파일명
-VIDEO_FPS       = 10                          # 비디오 저장 FPS
+VIDEO_FPS       = 5                          # 비디오 저장 FPS
 # =================================
 
 
-def gstreamer_pipeline(sensor_id=1, width=1920, height=1080,
+def gstreamer_pipeline(sensor_id=1, width=960, height=540,
                        display_width=960, display_height=540,
                        framerate=30, flip_method=0):
     return (
         "nvarguscamerasrc sensor-id=%d ! "
-        "video/x-raw(memory:NVMM), width=%d, height=%d, framerate=%d/1 ! "
-        "nvvidconv flip-method=%d ! "
-        "video/x-raw, width=%d, height=%d, format=BGRx ! "
+        "video/x-raw(memory:NVMM), width=(int)%d, height=(int)%d, format=(string)NV12, framerate=(fraction)%d/1 ! "
+        "nvvidconv ! "
+        "video/x-raw, format=(string)BGRx ! "
         "videoconvert ! "
-        "video/x-raw, format=BGR ! appsink"
-        % (sensor_id, width, height, framerate,
-           flip_method, display_width, display_height)
+        "video/x-raw, format=(string)BGR ! "
+        "appsink max-buffers=1 drop=True"
+        % (
+            sensor_id,
+            width,
+            height,
+            framerate,
+        )
     )
 
 
@@ -70,6 +75,7 @@ def main():
         save=False, 
         grayscale=False
     )
+    # depth._width, depth._height = 1280, 720
     
     yolo_model = YOLO(ENGINE_PATH)
     frame_idx = 0
@@ -81,9 +87,9 @@ def main():
                 print("⚠️  프레임 수신 실패 – 종료")
                 break
 
-            if frame_idx % 10 == 0:                    # N frame inference
+            if frame_idx % 5 == 0:                    # N frame inference
                 # --- YOLO 추론 ---
-                bbox_result = yolo_model(frame, imgsz=640, conf=0.5)[0]
+                bbox_result = yolo_model(frame, imgsz=640, conf=0.45)[0]
                 boxes = bbox_result.boxes.xyxy.cpu().numpy()
                 classes = bbox_result.boxes.cls.cpu().numpy()
                 depth_map = depth.infer(frame)
