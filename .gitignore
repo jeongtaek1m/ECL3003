@@ -13,3 +13,8 @@ record/
 **record/
 runs/
 **runs/
+*.onnx
+*.trt
+*.engine
+__pycache__/
+.vscode/
